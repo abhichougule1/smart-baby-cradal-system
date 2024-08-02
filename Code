@@ -1,0 +1,159 @@
+#include <DHT.h>
+#include <Servo.h>
+#include <SoftwareSerial.h>
+
+const int moisturePin = A0;     // Analog pin for moisture sensor
+const int soundPin = A1;        // Analog pin for sound sensor
+int moistureValue = 0;          // Variable to store the moisture value
+int soundValue = 0;             // Variable to store the sound value
+
+Servo servo1;                    // Declare servo object
+int pos1 = 0;                    // Variable to control servo position
+
+const int buzzerPin = 11;         // Pin connected to the buzzer
+const int moistureThreshold = 500; // Moisture threshold to trigger the buzzer
+const int soundThreshold = 500;     // Sound threshold to activate servo motor continuously
+
+// Define the type of sensor and pin number for DHT sensor
+#define DHTPIN 4      // Digital pin connected to the DHT sensor
+#define DHTTYPE DHT11 // DHT 11
+
+// Define the pin numbers for controlling the motor with L293D motor driver
+const int motorPin1 = 2;  // Pin connected to input 1 of L293D
+const int motorPin2 = 3;  // Pin connected to input 2 of L293D
+const int enablePin = 9;  // Pin connected to ENABLE of L293D
+
+// Define the temperature threshold
+const float threshold = 32; // Threshold temperature in degrees Celsius
+
+// Initialize DHT sensor
+DHT dht(DHTPIN, DHTTYPE);
+
+// GSM configuration
+#define GSM_TX 7
+#define GSM_RX 8
+SoftwareSerial gsmSerial(GSM_TX, GSM_RX);
+
+// Phone number to send SMS
+char phoneNumber[] = "+919353704302";
+
+void setup() {
+  // Initialize serial communication
+  Serial.begin(9600);
+  gsmSerial.begin(9600);
+
+  // Initialize DHT sensor
+  dht.begin();
+
+  // Allow some time for the sensor to stabilize
+  delay(2000);
+
+  // Set motor pins as outputs
+  pinMode(motorPin1, OUTPUT);
+  pinMode(motorPin2, OUTPUT);
+  pinMode(enablePin, OUTPUT);
+
+  // Initially turn off the motor
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, LOW);
+
+  // Attach servo to pin 9
+  servo1.attach(6);
+
+  // Set buzzer pin as output
+  pinMode(buzzerPin, OUTPUT);
+}
+
+void loop() {
+  // Read moisture sensor
+  moistureValue = analogRead(moisturePin);
+  Serial.print("Moisture Level: ");
+  Serial.println(moistureValue);
+
+  // Read sound sensor
+  soundValue = analogRead(soundPin);
+  Serial.print("Sound Level: ");
+  Serial.println(soundValue);
+
+  // Check if moisture level is high
+  if (moistureValue < moistureThreshold) {
+    // Activate the buzzer
+    digitalWrite(buzzerPin, HIGH);
+    delay(5000);
+    digitalWrite(buzzerPin, LOW);
+    Serial.println("Moisture level is high! Buzzer activated.");
+
+    // Send SMS
+    sendSMS("BABY IS VOIDING POOPING ITS TIME TO CHANGE THE BEDSHEET.");
+  }
+
+  // Check if sound level is high
+  if (soundValue > soundThreshold) {
+    // Move servo to swing position continuously
+    while (true) {
+      // Move servo to swing position
+      for (pos1 = 30; pos1 <= 150; pos1++) {
+        servo1.write(pos1);
+        delay(10);
+      }
+      Serial.println("Baby is crying");
+      for (pos1 = 150; pos1 >= 30; pos1--) {
+        servo1.write(pos1);
+        delay(10);
+      }
+    }
+  }
+
+  // Read temperature from DHT sensor
+  float temperature = dht.readTemperature();
+
+  // Check if temperature is valid
+  if (!isnan(temperature)) {
+    // Print temperature to serial monitor
+    Serial.print("Temperature: ");
+    Serial.print(temperature);
+    Serial.println(" °C");
+    delay(1000);
+
+    // Check if temperature exceeds threshold
+    if (temperature >= threshold) {
+      // Turn on the motor in one direction
+      digitalWrite(motorPin1, HIGH);
+      digitalWrite(motorPin2, LOW);
+      // Set the motor speed (you can adjust the value as needed)
+      analogWrite(enablePin, 10); // PWM speed control, range 0-255
+      Serial.println("Motor ON");
+    } else {
+      // Turn off the motor
+      digitalWrite(motorPin1, LOW);
+      digitalWrite(motorPin2, LOW);
+      Serial.println("Motor OFF");
+    }
+  } else {
+    // Print error message if temperature reading is invalid
+    Serial.println("Error reading temperature!");
+  }
+
+  // Delay for stability
+  delay(1000);
+}
+
+void sendSMS(const char *message) {
+  // Send AT commands to configure GSM module
+  gsmSerial.println("AT");
+  delay(100);
+  gsmSerial.println("AT+CMGF=1"); // Set the SMS mode to text
+  delay(100);
+  
+  // Compose the SMS message
+  gsmSerial.print("AT+CMGS=\"");
+  gsmSerial.print(phoneNumber);
+  gsmSerial.println("\"");
+
+  delay(100);
+  gsmSerial.println(message);
+
+  delay(100);
+  gsmSerial.write(26); // Send Ctrl+Z to indicate the end of the message
+  delay(100);
+}
